@@ -1,107 +1,34 @@
 import psycopg2
+import sqlalchemy as sa
+from sqlalchemy.orm import sessionmaker
 
-def create_db(conn):
-    '''Создание БД clients'''
-    with conn.cursor() as cur:
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS client(
-                id SERIAL PRIMARY KEY,
-                first_name VARCHAR(30) NOT NULL,
-                last_name VARCHAR(30) NOT NULL,
-                email VARCHAR(400) NOT NULL
-            );
+from models import *
 
-            CREATE TABLE IF NOT EXISTS phone(
-                number VARCHAR(16) NOT NULL,
-                client_id INT NOT NULL REFERENCES client(id) ON DELETE CASCADE,
-                CONSTRAINT pk_phone PRIMARY KEY(number, client_id)
-            );
-            ''')
+# Переменные подключения
+bd = 'postgresql'
+bd_adress = 'localhost'
+bd_port = 5432
+bd_name = 'books_db'
+bd_user = 'postgres'
+bd_password = 'postgres'
 
-def add_client(conn, first_name:str, last_name:str, email:str, phones:list=None):
-    '''Добавление нового клиента в БД, список телефонов опционально'''
-    with conn.cursor() as cur:
-        cur.execute('''
-            INSERT INTO client(first_name, last_name, email)
-            VALUES
-            (%s, %s, %s) RETURNING id;
-            ''', (first_name, last_name, email))
-        client_id = cur.fetchone()
-        if phones != None:
-            for phone in phones:
-                add_phone(conn, client_id, phone)
-    return client_id
+file_data = 'data.json'
 
-def add_phone(conn, client_id:int, phone:str):
-    '''Добавление телефона к существующему в БД клиенту'''
-    with conn.cursor() as cur:
-        cur.execute('''
-            INSERT INTO phone(client_id, number)
-            VALUES(%s, %s);
-            ''', (client_id, phone))
-    return
+DSN = f'{bd}://{bd_user}:{bd_password}@{bd_adress}:{bd_port}/{bd_name}'
+engine = sa.create_engine(DSN)
 
-def change_client(conn, client_id:int, first_name:str=None, last_name:str=None, email:str=None, phones:list=None):
-    '''Изменение данных существующего в БД клиента'''
-    execute=[]
-    if first_name != None:
-        execute += [f"first_name = '{first_name}'"]
-    if last_name != None:
-        execute += [f"last_name = '{last_name}'"]
-    if email != None:
-        execute += [f"email = '{email}'"]
-    set = ', '.join(execute)
-    with conn.cursor() as cur:
-        cur.execute('''
-            UPDATE client SET ''' + set + ''' 
-            WHERE id=%s;''', (client_id, ))
-    if phones != None:
-        for phone in phones:
-            add_phone(conn, client_id, phone)
-    return
+Session = sessionmaker(bind=engine)
+session = Session()
 
-def delete_phone(conn, client_id:int, phone:str):
-    '''Удаление телефона у существующего клиента'''
-    with conn.cursor() as cur:
-        cur.execute('''
-            DELETE FROM phone 
-            WHERE client_id=%s AND number=%s;
-            ''', (client_id, phone))
+# Создание и наполнение таблиц БД данными из файла
+create_tables(engine)
+push_data(session, file_data)
 
-def delete_client(conn, client_id:int):
-    '''Удаление клиента и связанных записей'''
-    with conn.cursor() as cur:
-        cur.execute('''
-            DELETE FROM client
-            WHERE id=%s;
-            ''', (client_id,))
+# Выполнение запроса
+search = search_publisher()
+subq = session.query(Book).join(Publisher.books).filter(search.get('column') == search.get('value')).subquery()
 
-def find_client(conn, first_name:str=None, last_name:str=None, email:str=None, phone:str=None):
-    '''Поиск по БД клиента, возвращает список данных клиента'''
-    execute=[]
-    if first_name != None:
-        execute += [f"first_name = '{first_name}'"]
-    if last_name != None:
-        execute += [f"last_name = '{last_name}'"]
-    if email != None:
-        execute += [f"email = '{email}'"]
-    if phone != None:
-        execute += [f"number = '{phone}'"]
-    where = ' AND '.join(execute)
-    with conn.cursor() as cur:
-        cur.execute('''
-            SELECT DISTINCT c.id, c.first_name, c.last_name, c.email FROM client c
-            LEFT JOIN phone p ON c.id=p.client_id
-            WHERE ''' + where)
-        client = cur.fetchone()
-    return client
+for c in session.query(Shop).join(Stock.shop).join(subq, Stock.id_book == subq.c.id).all():
+    print(c)
 
-
-with psycopg2.connect(database="client", user="postgres", password="postgres") as conn:
-    #create_db(conn) #Создаем БД
-    #print(add_client(conn, '3', '1', 'test.ru', ('000000000', '03', 'test-555-test'))) #Добавляем клиента
-    #add_phone(conn, 2, '911') #Добавляем телефон клиенту
-    #delete_phone(conn, 2, '911') #Удаляем телефон клиента
-    #print(find_client(conn, email = 'test.ru')) #Находим клиента
-    #change_client(conn, '2', '3', '3', email = 'test@kjhj.ru', phones = ['3456', '00098765']) #Меняем данные клиента
-    #delete_client(conn, 2)
+session.close()
