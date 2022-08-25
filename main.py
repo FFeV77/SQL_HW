@@ -14,21 +14,23 @@ bd_password = 'postgres'
 
 file_data = 'data.json'
 
-DSN = f'{bd}://{bd_user}:{bd_password}@{bd_adress}:{bd_port}/{bd_name}'
-engine = sa.create_engine(DSN)
+if __name__ == "__main__":
 
-Session = sessionmaker(bind=engine)
-session = Session()
+    DSN = f'{bd}://{bd_user}:{bd_password}@{bd_adress}:{bd_port}/{bd_name}'
+    engine = sa.create_engine(DSN)
 
-# Создание и наполнение таблиц БД данными из файла
-create_tables(engine)
-push_data(session, file_data)
+    Session = sessionmaker(bind=engine)
+    session = Session()
 
-# Выполнение запроса
-search = search_publisher()
-subq = session.query(Book).join(Publisher.books).filter(search.get('column') == search.get('value')).subquery()
+    # Создание и наполнение таблиц БД данными из файла
+    create_tables(engine)
+    push_data(session, file_data)
 
-for c in session.query(Shop).join(Stock.shop).join(subq, Stock.id_book == subq.c.id).all():
-    print(c)
+    # Выполнение запроса
+    search = search_publisher()
+    subq = session.query(Book).join(Publisher.books).filter(search.get('column') == search.get('value')).subquery()
 
-session.close()
+    for c in session.query(Shop).join(Stock.shop).join(subq, Stock.id_book == subq.c.id).all():
+        print(c)
+
+    session.close()
