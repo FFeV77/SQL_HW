@@ -2,7 +2,7 @@ import psycopg2
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
-from models import *
+from models import Book, Publisher, Shop, Stock, create_tables, push_data, search_publisher
 
 # Переменные подключения
 bd = 'postgresql'
